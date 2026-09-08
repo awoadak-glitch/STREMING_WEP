@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import './native-polish.css';
 import Shell from '@/components/Shell';
 
 export const metadata: Metadata = {
