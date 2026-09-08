@@ -39,18 +39,25 @@ jobs:
           cat /tmp/anime-witcher-next.log
           exit 1
 
-      - name: Verify real home data and drill into anime/episodes/servers
+      - name: Verify real data chain
         run: |
           set -euo pipefail
           curl -fsS http://127.0.0.1:3000/api/home -o /tmp/home.json
+          curl -fsS http://127.0.0.1:3000/api/settings -o /tmp/settings.json
+          curl -fsS 'http://127.0.0.1:3000/api/search?index=series_fav_count_desc&page=0' -o /tmp/popular.json
           node <<'NODE'
           const fs = require('fs');
           const { execFileSync } = require('child_process');
           const home = JSON.parse(fs.readFileSync('/tmp/home.json','utf8'));
+          const settings = JSON.parse(fs.readFileSync('/tmp/settings.json','utf8'));
+          const popularRaw = JSON.parse(fs.readFileSync('/tmp/popular.json','utf8'));
           const keys = ['hero','recent','popular','bestMal','animations','latest','news'];
           const counts = Object.fromEntries(keys.map(k => [k, Array.isArray(home[k]) ? home[k].length : -1]));
+          console.log('CURRENT_SEASON', JSON.stringify(settings.current_season || ''));
           console.log('HOME_COUNTS', JSON.stringify(counts));
-          for (const k of keys) {
+          console.log('POPULAR_UNFILTERED_COUNT', Array.isArray(popularRaw.items) ? popularRaw.items.length : 0);
+          console.log('POPULAR_SAMPLE_SEASONS', JSON.stringify((popularRaw.items || []).slice(0,12).map(x => x.season)));
+          for (const k of ['hero','recent','bestMal','animations','latest','news']) {
             if (!Array.isArray(home[k]) || home[k].length === 0) throw new Error(`Home section ${k} is empty`);
           }
           const anime = home.hero.find(x => x && (x.id || x.objectID)) || home.latest[0];
