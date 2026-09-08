@@ -19,6 +19,29 @@ function imageFrom(value: any): string {
   return value.large || value.medium || value.original || value.uri || value.url || value.en || Object.values(value).find(x => typeof x === 'string') as string || '';
 }
 
+function newsDate(value: any): string {
+  if (value == null || value === '') return '';
+  let candidate: any = value;
+  if (typeof candidate === 'object') {
+    candidate = candidate.seconds ?? candidate._seconds ?? candidate.timestamp ?? candidate.value ?? '';
+  }
+  if (typeof candidate === 'number') {
+    const ms = candidate > 0 && candidate < 1e12 ? candidate * 1000 : candidate;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+  }
+  const text = String(candidate).trim();
+  if (!text) return '';
+  if (/^\d+(?:\.\d+)?$/.test(text)) {
+    const num = Number(text);
+    const ms = num > 0 && num < 1e12 ? num * 1000 : num;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+  }
+  const d = new Date(text);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
 export function animeId(raw: any): string {
   if (raw?.objectID) return String(raw.objectID);
   if (raw?.id) return String(raw.id);
@@ -61,7 +84,7 @@ export function normalizeNews(raw: any) {
     title: asArabic(raw?.title, 'خبر'),
     image: imageFrom(raw?.thumb_link || raw?.thumb_uri),
     url: String(raw?.news_link || ''),
-    date: raw?.date_created || raw?.date || '',
+    date: newsDate(raw?.date_created ?? raw?.created_at ?? raw?.published_at ?? raw?.date ?? ''),
   };
 }
 
