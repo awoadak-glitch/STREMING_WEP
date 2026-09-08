@@ -1,7 +1,23 @@
-import AnimeCard from '@/components/AnimeCard';
+import CatalogClient from '@/components/CatalogClient';
 import { safeSearch } from '@/lib/algolia';
 import { normalizeAnime } from '@/lib/normalize';
 
-const catalog:Record<string,{title:string,index:string,desc:string}>={anime:{title:'قائمة الأنمي',index:'all',desc:'جميع أعمال الأنمي'},animation:{title:'قائمة الأنميشن',index:'all_animation',desc:'أعمال الأنميشن'},popular:{title:'الأكثر شهرة',index:'series_fav_count_desc',desc:'الأعمال الأكثر إضافة للمفضلة'},latest:{title:'اخر الأعمال المضافة',index:'series_date_created',desc:'أحدث الإضافات'},recent:{title:'الحلقات الجديدة',index:'series_date_created',desc:'الأعمال ذات الحلقات والإضافات الحديثة'},upcoming:{title:'قادم قريباً',index:'series',desc:'الأعمال القادمة'}};
-export const revalidate=90;
-export default async function CatalogPage({params}:{params:Promise<{kind:string}>}){const {kind}=await params; const cfg=catalog[kind]||catalog.anime; const result=await safeSearch(cfg.index,'',{hitsPerPage:60}); let items=result.hits.map(normalizeAnime); if(kind==='upcoming') items=items.filter((x:any)=>/قادم|لم يتم/i.test(String((x as any).status||''))||!x.year); return <><header className="page-header"><h1>{cfg.title}</h1><p>{cfg.desc} — {items.length} نتيجة</p></header><div className="catalog-grid">{items.map((x,i)=><AnimeCard key={`${x.id}-${i}`} anime={x}/>)}</div>{!items.length&&<div className="status-message">لا توجد بيانات متاحة في هذا القسم حالياً.</div>}</>}
+const catalog: Record<string, { index: string }> = {
+  anime: { index: 'all' },
+  animation: { index: 'all_animation' },
+  popular: { index: 'series_fav_count_desc' },
+  latest: { index: 'series_date_created' },
+  recent: { index: 'recent' },
+  upcoming: { index: 'series' },
+};
+
+export const revalidate = 90;
+
+export default async function CatalogPage({ params }: { params: Promise<{ kind: string }> }) {
+  const { kind } = await params;
+  const cfg = catalog[kind] || catalog.anime;
+  const result = await safeSearch(cfg.index, '', { hitsPerPage: 120 });
+  let items = result.hits.map(normalizeAnime);
+  if (kind === 'upcoming') items = result.hits.filter((raw: any) => /قادم|لم يتم|upcoming/i.test(String(raw?.details?.state || raw?.status || '')) || !raw?.details?.start_date).map(normalizeAnime);
+  return <CatalogClient items={items} />;
+}
