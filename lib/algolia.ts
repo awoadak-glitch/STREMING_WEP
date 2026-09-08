@@ -31,6 +31,14 @@ export async function getSearchConfig(): Promise<SearchConfig> {
   }
 }
 
+function headers(cfg: SearchConfig) {
+  return {
+    'Content-Type': 'application/json',
+    'X-Algolia-Application-Id': cfg.appId,
+    'X-Algolia-API-Key': cfg.apiKey,
+  };
+}
+
 export async function searchIndex(
   index: string,
   query = '',
@@ -41,17 +49,32 @@ export async function searchIndex(
   const url = `https://${cfg.appId.toLowerCase()}-dsn.algolia.net/1/indexes/${encodeURIComponent(index)}/query`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Algolia-Application-Id': cfg.appId,
-      'X-Algolia-API-Key': cfg.apiKey,
-    },
+    headers: headers(cfg),
     body: JSON.stringify({ query, hitsPerPage: 24, page: 0, ...params }),
     next: { revalidate: query ? 15 : 90 },
   });
   if (!res.ok) throw new Error(`Algolia ${res.status}`);
   const data = await res.json();
   return { hits: data.hits || [], nbHits: data.nbHits || 0, page: data.page || 0, nbPages: data.nbPages || 0 };
+}
+
+export async function getIndexObject(index: string, objectID: string): Promise<any | null> {
+  const cfg = await getSearchConfig();
+  if (!cfg.active || !objectID) return null;
+  const url = `https://${cfg.appId.toLowerCase()}-dsn.algolia.net/1/indexes/${encodeURIComponent(index)}/${encodeURIComponent(objectID)}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: headers(cfg),
+    next: { revalidate: 6 * 60 * 60 },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Algolia object ${res.status}`);
+  return res.json();
+}
+
+export async function safeGetIndexObject(index: string, objectID: string) {
+  try { return await getIndexObject(index, objectID); }
+  catch { return null; }
 }
 
 export async function safeSearch(index: string, query = '', params: Record<string, any> = {}) {
