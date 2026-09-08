@@ -117,15 +117,14 @@ jobs:
                 const timer = setTimeout(() => controller.abort(), 12000);
                 try {
                   const media = await fetch(resolved.url, {
-                    redirect: 'follow',
-                    signal: controller.signal,
+                    redirect: 'follow', signal: controller.signal,
                     headers: { 'User-Agent': 'Mozilla/5.0', Range: 'bytes=0-2047' },
                   });
                   const type = media.headers.get('content-type') || '';
                   const buf = Buffer.from(await media.arrayBuffer());
                   const text = buf.subarray(0, 2048).toString('utf8');
                   const hls = text.includes('#EXTM3U') || /mpegurl/i.test(type);
-                  const binaryMedia = media.ok && (buf.length > 0) && (/video|octet-stream/i.test(type) || /\.mp4(?:\?|$)/i.test(resolved.url));
+                  const binaryMedia = media.ok && buf.length > 0 && (/video|octet-stream/i.test(type) || /\.mp4(?:\?|$)/i.test(resolved.url));
                   if (hls || binaryMedia) {
                     playable = { index: i, name: resolved.name, quality: resolved.quality, status: media.status, type, hls };
                     break;
@@ -145,6 +144,38 @@ jobs:
         run: |
           echo "VERCEL_TOKEN_AVAILABLE=$HAS_VERCEL_TOKEN"
           echo "BUNNY_AUTH_KEY_AVAILABLE=$HAS_BUNNY_KEY"
+
+      - name: Prepare verified Vercel source bundle
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const skip = new Set(['.git', '.next', 'node_modules']);
+          const files = [];
+          function walk(dir) {
+            for (const name of fs.readdirSync(dir)) {
+              if (skip.has(name)) continue;
+              const full = path.join(dir, name);
+              const st = fs.statSync(full);
+              if (st.isDirectory()) walk(full);
+              else {
+                const rel = path.relative(process.cwd(), full).split(path.sep).join('/');
+                if (rel === '.github/workflows/anime-witcher-verify.yml') continue;
+                files.push({ file: rel, data: fs.readFileSync(full).toString('base64'), encoding: 'base64' });
+              }
+            }
+          }
+          walk(process.cwd());
+          fs.writeFileSync('/tmp/anime-witcher-vercel-files.json', JSON.stringify(files));
+          console.log('VERCEL_SOURCE_FILES', files.length);
+          NODE
+
+      - name: Upload verified source bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: anime-witcher-vercel-files
+          path: /tmp/anime-witcher-vercel-files.json
+          retention-days: 1
 
       - name: Show server log on failure
         if: failure()
