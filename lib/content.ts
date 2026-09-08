@@ -132,6 +132,18 @@ export async function getAnimeExtras(id: string, raw?: any) {
     listDocuments(`anime_list/${safeId}/characters`, { pageSize: 16 }).catch(() => ({ items: [] })),
   ]);
 
+  const characterRelations = charactersPage.items;
+  const characterRecords = await Promise.all(characterRelations.map((relation: any) => {
+    const characterId = String(relation.character_id || relation.id || relation.character?.id || '').trim();
+    if (!characterId) return Promise.resolve(null);
+    return getDocument(`characters_list/${pathSegment(characterId)}`).catch(() => null);
+  }));
+  const enrichedCharacters = characterRelations.map((relation: any, index: number) => ({
+    ...(characterRecords[index] || {}),
+    ...relation,
+    character_info: characterRecords[index] || undefined,
+  }));
+
   const relatedIds = Array.isArray(raw?.related_anime_ids)
     ? raw.related_anime_ids.map((x: any) => String(x?.id || x)).filter(Boolean).slice(0, 12)
     : [];
@@ -141,7 +153,7 @@ export async function getAnimeExtras(id: string, raw?: any) {
 
   return {
     reviews: reviewsPage.items,
-    characters: charactersPage.items,
+    characters: enrichedCharacters,
     related: relatedRaw.filter(Boolean).map(normalizeAnime),
   };
 }
