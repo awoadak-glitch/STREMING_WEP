@@ -29,6 +29,7 @@ jobs:
         env:
           FIREBASE_PROJECT_ID: animewitcher-1c66d
           FIREBASE_WEB_API_KEY: AIzaSyAcbWRwfFNnCpoydDXlEALWnM_TYVcJOMU
+          BUNNY_AUTH_KEY: ${{ secrets.BUNNY_AUTH_KEY }}
         run: |
           npm start > /tmp/anime-witcher-next.log 2>&1 &
           echo $! > /tmp/anime-witcher-next.pid
@@ -39,46 +40,111 @@ jobs:
           cat /tmp/anime-witcher-next.log
           exit 1
 
-      - name: Verify real data chain
+      - name: Verify real home, routes, episodes and playable server
         run: |
           set -euo pipefail
-          curl -fsS http://127.0.0.1:3000/api/home -o /tmp/home.json
-          curl -fsS http://127.0.0.1:3000/api/settings -o /tmp/settings.json
-          curl -fsS 'http://127.0.0.1:3000/api/search?index=series_fav_count_desc&page=0' -o /tmp/popular.json
           node <<'NODE'
-          const fs = require('fs');
-          const { execFileSync } = require('child_process');
-          const home = JSON.parse(fs.readFileSync('/tmp/home.json','utf8'));
-          const settings = JSON.parse(fs.readFileSync('/tmp/settings.json','utf8'));
-          const popularRaw = JSON.parse(fs.readFileSync('/tmp/popular.json','utf8'));
-          const keys = ['hero','recent','popular','bestMal','animations','latest','news'];
-          const counts = Object.fromEntries(keys.map(k => [k, Array.isArray(home[k]) ? home[k].length : -1]));
-          console.log('CURRENT_SEASON', JSON.stringify(settings.current_season || ''));
-          console.log('HOME_COUNTS', JSON.stringify(counts));
-          console.log('POPULAR_UNFILTERED_COUNT', Array.isArray(popularRaw.items) ? popularRaw.items.length : 0);
-          console.log('POPULAR_SAMPLE_SEASONS', JSON.stringify((popularRaw.items || []).slice(0,12).map(x => x.season)));
-          for (const k of ['hero','recent','bestMal','animations','latest','news']) {
-            if (!Array.isArray(home[k]) || home[k].length === 0) throw new Error(`Home section ${k} is empty`);
-          }
-          const anime = home.hero.find(x => x && (x.id || x.objectID)) || home.latest[0];
-          const animeId = String(anime.id || anime.objectID || '');
-          if (!animeId) throw new Error('No real anime id found');
-          const enc = encodeURIComponent(animeId);
-          const get = (path) => JSON.parse(execFileSync('curl',['-fsS',`http://127.0.0.1:3000${path}`],{encoding:'utf8'}));
-          const details = get(`/api/anime/${enc}`);
-          if (!details || details.error) throw new Error(`Anime details failed for ${animeId}`);
-          const episodesPayload = get(`/api/anime/${enc}/episodes`);
-          const episodes = Array.isArray(episodesPayload) ? episodesPayload : (episodesPayload.episodes || episodesPayload.items || []);
-          console.log('ANIME_ID', animeId, 'EPISODE_COUNT', episodes.length);
-          if (!episodes.length) throw new Error(`No episodes for ${animeId}`);
-          const episode = episodes[0];
-          const episodeId = String(episode.id || episode.doc_id || episode.order || '');
-          if (!episodeId) throw new Error('No real episode id found');
-          const serversPayload = get(`/api/anime/${enc}/episodes/${encodeURIComponent(episodeId)}/servers`);
-          const servers = Array.isArray(serversPayload) ? serversPayload : (serversPayload.servers || serversPayload.items || []);
-          console.log('EPISODE_ID', episodeId, 'SERVER_COUNT', servers.length);
-          if (!servers.length) throw new Error(`No servers for ${animeId}/${episodeId}`);
+          const base = 'http://127.0.0.1:3000';
+          const checkPage = async (path) => {
+            const r = await fetch(base + path, { redirect: 'follow' });
+            console.log('PAGE', path.split('?')[0], r.status);
+            if (r.status !== 200) throw new Error(`${path} returned ${r.status}`);
+            return r;
+          };
+          const getJson = async (path) => {
+            const r = await fetch(base + path);
+            if (!r.ok) throw new Error(`${path} returned ${r.status}: ${(await r.text()).slice(0,160)}`);
+            return r.json();
+          };
+
+          (async () => {
+            await checkPage('/');
+            const home = await getJson('/api/home');
+            const keys = ['hero','recent','popular','bestMal','animations','latest','news'];
+            const counts = Object.fromEntries(keys.map(k => [k, Array.isArray(home[k]) ? home[k].length : -1]));
+            console.log('CURRENT_SEASON', JSON.stringify(home.currentSeason || ''));
+            console.log('HOME_COUNTS', JSON.stringify(counts));
+            for (const k of keys) {
+              if (!Array.isArray(home[k]) || home[k].length === 0) throw new Error(`Home section ${k} is empty`);
+            }
+
+            await checkPage('/search?q=Naruto');
+            const search = await getJson('/api/search?q=Naruto&index=series');
+            console.log('SEARCH_ITEMS', Array.isArray(search.items) ? search.items.length : 0);
+            if (!Array.isArray(search.items) || !search.items.length) throw new Error('Real search returned no items');
+
+            const candidates = [...home.hero, ...home.latest, ...search.items].filter(Boolean);
+            let chain = null;
+            for (const anime of candidates.slice(0, 20)) {
+              const animeId = String(anime.id || anime.objectID || '');
+              if (!animeId) continue;
+              try {
+                const episodesPayload = await getJson(`/api/anime/${encodeURIComponent(animeId)}/episodes`);
+                const episodes = Array.isArray(episodesPayload) ? episodesPayload : (episodesPayload.episodes || episodesPayload.items || []);
+                for (const episode of episodes.slice(0, 4)) {
+                  const episodeId = String(episode.id || episode.doc_id || episode.order || '');
+                  if (!episodeId) continue;
+                  const serversPayload = await getJson(`/api/anime/${encodeURIComponent(animeId)}/episodes/${encodeURIComponent(episodeId)}/servers`);
+                  const servers = Array.isArray(serversPayload) ? serversPayload : (serversPayload.items || serversPayload.servers || []);
+                  if (servers.length) { chain = { animeId, episodeId, episodes, servers }; break; }
+                }
+                if (chain) break;
+              } catch {}
+            }
+            if (!chain) throw new Error('Could not find a real anime/episode/server chain');
+
+            console.log('REAL_ANIME_ID', chain.animeId);
+            console.log('EPISODE_COUNT', chain.episodes.length);
+            console.log('REAL_EPISODE_ID', chain.episodeId);
+            console.log('SERVER_COUNT', chain.servers.length);
+
+            const animePath = `/anime/${encodeURIComponent(chain.animeId)}`;
+            await checkPage(animePath);
+            await checkPage(`${animePath}/episodes`);
+            await checkPage(`/watch/${encodeURIComponent(chain.animeId)}/${encodeURIComponent(chain.episodeId)}`);
+            const details = await getJson(`/api${animePath}`);
+            if (!details || details.error) throw new Error('Real anime details API failed');
+
+            let playable = null;
+            const maxServers = Math.min(chain.servers.length, 15);
+            for (let i = 0; i < maxServers; i++) {
+              try {
+                const r = await fetch(`${base}/api/anime/${encodeURIComponent(chain.animeId)}/episodes/${encodeURIComponent(chain.episodeId)}/servers?resolve=${i}`);
+                if (!r.ok) continue;
+                const resolved = await r.json();
+                if (!resolved?.url) continue;
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 12000);
+                try {
+                  const media = await fetch(resolved.url, {
+                    redirect: 'follow',
+                    signal: controller.signal,
+                    headers: { 'User-Agent': 'Mozilla/5.0', Range: 'bytes=0-2047' },
+                  });
+                  const type = media.headers.get('content-type') || '';
+                  const buf = Buffer.from(await media.arrayBuffer());
+                  const text = buf.subarray(0, 2048).toString('utf8');
+                  const hls = text.includes('#EXTM3U') || /mpegurl/i.test(type);
+                  const binaryMedia = media.ok && (buf.length > 0) && (/video|octet-stream/i.test(type) || /\.mp4(?:\?|$)/i.test(resolved.url));
+                  if (hls || binaryMedia) {
+                    playable = { index: i, name: resolved.name, quality: resolved.quality, status: media.status, type, hls };
+                    break;
+                  }
+                } finally { clearTimeout(timer); }
+              } catch {}
+            }
+            if (!playable) throw new Error('Server records exist, but no tested server resolved to readable MP4/HLS media');
+            console.log('PLAYABLE_SERVER', JSON.stringify(playable));
+          })().catch(err => { console.error(err); process.exit(1); });
           NODE
+
+      - name: Check Vercel deployment credential availability
+        env:
+          HAS_VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN != '' }}
+          HAS_BUNNY_KEY: ${{ secrets.BUNNY_AUTH_KEY != '' }}
+        run: |
+          echo "VERCEL_TOKEN_AVAILABLE=$HAS_VERCEL_TOKEN"
+          echo "BUNNY_AUTH_KEY_AVAILABLE=$HAS_BUNNY_KEY"
 
       - name: Show server log on failure
         if: failure()
