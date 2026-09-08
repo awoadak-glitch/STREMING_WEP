@@ -13,6 +13,11 @@ function providerPage(u:string){return /streamtape\.(?:com|to)\/v\/|krakenfiles\
 function looksDirect(u:string){return !providerPage(u) && (/\.(mp4|m3u8|webm)(?:\?|#|$)/i.test(u) || /\/api\/file\//i.test(u) || /playlist/i.test(u));}
 function cleanHtmlUrl(u:string){return u.replace(/\\u0026/g,'&').replace(/\\\//g,'/').replace(/&amp;/g,'&').replace(/["'<>]+$/g,'');}
 function pixelDrainDirect(u:string){const m=u.match(/pixeldrain\.com\/u\/([^/?#]+)/i);return m?`https://pixeldrain.com/api/file/${encodeURIComponent(m[1])}`:'';}
+function streamTapeDirect(u:string){
+  const direct=u.match(/streamtape\.(?:com|to)\/get_video\?[^"'<>\s]+/i); if(direct) return u;
+  const m=u.match(/streamtape\.(?:com|to)\/v\/([^/?#]+)/i);
+  return m?`https://streamtape.com/get_video?id=${encodeURIComponent(m[1])}&dl=1`:'';
+}
 
 async function fetchHtml(source:string){
   const res=await fetch(source,{headers:{'User-Agent':'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36','Accept':'text/html,application/xhtml+xml,*/*','Accept-Language':'ar,en;q=0.8'},redirect:'follow',cache:'no-store'});
@@ -51,6 +56,9 @@ async function resolveKraken(source:string){
 
 async function resolveProvider(server:any,source:string){
   const name=String(server.name||server.type||'').toUpperCase();
+  if(name==='ST' || /streamtape\.(?:com|to)\//i.test(source)){
+    const direct=streamTapeDirect(source); if(direct) return direct;
+  }
   if(name==='PD' || /pixeldrain\.com\/u\//i.test(source)){
     const direct=pixelDrainDirect(source); if(direct) return direct;
   }
