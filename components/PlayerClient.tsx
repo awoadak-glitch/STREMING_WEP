@@ -1,6 +1,7 @@
 'use client';
 
 import Hls from 'hls.js';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Server = { id: string; name: string; quality: string; url?: string };
@@ -28,7 +29,8 @@ function formatTime(value: number) {
 }
 function androidDevice() { return typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent); }
 
-export default function PlayerClient({ animeId, episodeId, animeName, episodeName, poster, initialServers }: { animeId: string; episodeId: string; animeName: string; episodeName: string; poster?: string; initialServers: Server[] }) {
+export default function PlayerClient({ animeId, episodeId, animeName, episodeName, poster, initialServers, previousEpisodeId, nextEpisodeId }: { animeId: string; episodeId: string; animeName: string; episodeName: string; poster?: string; initialServers: Server[]; previousEpisodeId?: string; nextEpisodeId?: string }) {
+  const router = useRouter();
   const canonicalAnimeId = cleanId(animeId);
   const canonicalEpisodeId = cleanId(episodeId);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -74,6 +76,15 @@ export default function PlayerClient({ animeId, episodeId, animeName, episodeNam
     } catch {}
   }
 
+  function goEpisode(target?: string) {
+    if (!target) return;
+    setDialog(null);
+    setPlayerOpen(false);
+    setSrc('');
+    const nextId = cleanId(target);
+    router.push(`/watch/${encodeURIComponent(canonicalAnimeId)}/${encodeURIComponent(nextId)}`);
+  }
+
   async function choose(index:number) {
     setActive(index); setLoading(true); setInlineError('');
     try {
@@ -117,7 +128,7 @@ export default function PlayerClient({ animeId, episodeId, animeName, episodeNam
   async function fullscreen(){const box=playerBoxRef.current as any;try{if(!document.fullscreenElement)await box?.requestFullscreen?.();else await document.exitFullscreen?.();}catch{}}
 
   return <div className="server-screen">
-    <header className="server-topbar"><button className="appbar-back" onClick={()=>history.back()} aria-label="رجوع">←</button><button className="server-more">⋮</button><div className="episode-nav-arrows"><button>‹</button><button>›</button></div><h1>{episodeName}</h1></header>
+    <header className="server-topbar"><button className="appbar-back" onClick={()=>history.back()} aria-label="رجوع">←</button><button className="server-more">⋮</button><div className="episode-nav-arrows"><button onClick={()=>goEpisode(previousEpisodeId)} disabled={!previousEpisodeId} aria-label="الحلقة السابقة" title="الحلقة السابقة">‹</button><button onClick={()=>goEpisode(nextEpisodeId)} disabled={!nextEpisodeId} aria-label="الحلقة التالية" title="الحلقة التالية">›</button></div><h1>{episodeName}</h1></header>
     <div className="quality-groups">
       {groups.map(group=><section className="quality-group" key={group.quality}><h2>{group.quality}</h2><div className="quality-server-list">{group.servers.map(server=>{const i=server._index;const state=stateMap[i];return <div className={`quality-server-card ${active===i?'active':''}`} key={`${server.id}-${i}`}><span className={`server-health ${state||''}`}>{state==='ok'?'✓':state==='error'?'!':''}</span><strong>سيرفر : {server.name}</strong><button onClick={()=>choose(i)} disabled={loading&&active===i}>{loading&&active===i?'...':'اختيار'}</button></div>;})}</div></section>)}
       {!initialServers.length&&<div className="status-message">لم يتم العثور على سيرفرات لهذه الحلقة.</div>}
