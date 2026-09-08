@@ -9,8 +9,10 @@ export const revalidate = 90;
 
 export default async function HomePage() {
   const data = await getHomeData().catch(() => ({ currentSeason: '', hero: [], recent: [], popular: [], bestMal: [], animations: [], latest: [], news: [] }));
+  const heroItems = data.popular.length ? data.popular.slice(0, 10) : data.hero.slice(0, 10);
+
   return <>
-    <HeroCarousel items={data.hero} />
+    <HeroCarousel items={heroItems} />
     <ContinueWatching />
     <RecentRow items={data.recent} />
     <SectionRow title="الأكثر شهرة هذا الموسم" items={data.popular} href="/catalog/popular" />
@@ -18,6 +20,6 @@ export default async function HomePage() {
     <SectionRow title="الانميشن الاكثر مشاهدة" items={data.animations} href="/catalog/animation" />
     <SectionRow title="اخر الأعمال المضافة" items={data.latest} href="/catalog/latest" />
     <NewsRow items={data.news} />
-    {!data.hero.length && !data.latest.length && <div className="status-message">تعذر جلب المحتوى الآن. تأكد من إعدادات Firestore/Algolia في المشروع أو متغيرات Vercel.</div>}
+    {!heroItems.length && !data.latest.length && <div className="status-message">تعذر جلب المحتوى الآن. تأكد من إعدادات Firestore/Algolia في المشروع أو متغيرات Vercel.</div>}
   </>;
 }
