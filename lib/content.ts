@@ -1,6 +1,6 @@
 import { HOME_INDEXES } from './config';
 import { asArabic, getDocument, listDocuments } from './firestore';
-import { safeSearch } from './algolia';
+import { safeGetIndexObject, safeSearch } from './algolia';
 import { normalizeAnime, normalizeNews, normalizeRecent } from './normalize';
 
 function seasonText(raw: any) {
@@ -133,10 +133,12 @@ export async function getAnimeExtras(id: string, raw?: any) {
   ]);
 
   const characterRelations = charactersPage.items;
-  const characterRecords = await Promise.all(characterRelations.map((relation: any) => {
+  const characterRecords = await Promise.all(characterRelations.map(async (relation: any) => {
     const characterId = String(relation.character_id || relation.id || relation.character?.id || '').trim();
-    if (!characterId) return Promise.resolve(null);
-    return getDocument(`characters_list/${pathSegment(characterId)}`).catch(() => null);
+    if (!characterId) return null;
+    const firestoreRecord = await getDocument(`characters_list/${pathSegment(characterId)}`).catch(() => null);
+    if (firestoreRecord && (firestoreRecord.name || firestoreRecord.main_picture || firestoreRecord.image || firestoreRecord.picture)) return firestoreRecord;
+    return safeGetIndexObject('characters', characterId);
   }));
   const enrichedCharacters = characterRelations.map((relation: any, index: number) => ({
     ...(characterRecords[index] || {}),
