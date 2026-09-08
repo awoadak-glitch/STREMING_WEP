@@ -10,9 +10,17 @@ function relativeDate(value: any) {
   const min = Math.floor(diff / 60000);
   if (min < 60) return min <= 1 ? 'منذ دقيقة' : `منذ ${min} دقيقة`;
   const hours = Math.floor(min / 60);
-  if (hours < 24) return hours === 1 ? 'منذ ساعة' : hours === 2 ? 'منذ ساعتين' : `منذ ${hours} ساعات`;
+  if (hours < 24) {
+    if (hours === 1) return 'منذ ساعة';
+    if (hours === 2) return 'منذ ساعتين';
+    if (hours >= 3 && hours <= 10) return `منذ ${hours} ساعات`;
+    return `منذ ${hours} ساعة`;
+  }
   const days = Math.floor(hours / 24);
-  return days === 1 ? 'منذ يوم' : `منذ ${days} أيام`;
+  if (days === 1) return 'منذ يوم';
+  if (days === 2) return 'منذ يومين';
+  if (days >= 3 && days <= 10) return `منذ ${days} أيام`;
+  return `منذ ${days} يومًا`;
 }
 
 export default function RecentRow({ items }: { items: any[] }) {
