@@ -8,6 +8,7 @@ export default async function EpisodesPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const [rawAnime, episodes] = await Promise.all([getAnime(id).catch(() => null), getEpisodes(id).catch(() => [])]);
   const anime = rawAnime ? normalizeAnime(rawAnime) : { name: 'الحلقات' } as any;
+  const canonicalAnimeId = String(rawAnime?.id || anime.id || id);
   return <>
     <header className="page-header"><h1>{anime.name}</h1><p>{episodes.length ? `${episodes.length} حلقة متاحة` : 'قائمة الحلقات'}</p></header>
     <div className="episode-list">{episodes.map((ep: any, index: number) => {
@@ -15,7 +16,7 @@ export default async function EpisodesPage({ params }: { params: Promise<{ id: s
       const name = asArabic(ep.name, `الحلقة ${ep.order || epId}`);
       const translated = asArabic(ep.title_translated || ep.title, '');
       const thumb = getImage(ep.thumb_uri || ep.cover || anime.poster);
-      return <Link className="episode-card" key={`${epId}-${index}`} href={`/watch/${encodeURIComponent(id)}/${encodeURIComponent(epId)}`}>
+      return <Link className="episode-card" key={`${epId}-${index}`} href={`/watch/${encodeURIComponent(canonicalAnimeId)}/${encodeURIComponent(epId)}`}>
         {thumb ? <img className="episode-thumb" src={thumb} alt="" /> : <div className="episode-thumb poster-placeholder">AW</div>}
         <div className="episode-info"><strong>{name}</strong>{translated && <span>{translated}</span>}</div>
         {ep.filler && <span className="filler-badge">فلر</span>}<span className="episode-go">‹</span>
