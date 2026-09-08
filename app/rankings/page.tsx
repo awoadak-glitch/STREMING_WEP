@@ -1,2 +1,15 @@
-import AnimeCard from '@/components/AnimeCard'; import { safeSearch } from '@/lib/algolia'; import { normalizeAnime } from '@/lib/normalize';
-export const revalidate=90; export default async function RankingsPage(){const [mal,watched]=await Promise.all([safeSearch('best_mal_ranked','',{hitsPerPage:30}),safeSearch('most_watched_animations','',{hitsPerPage:18})]); const m=mal.hits.map(normalizeAnime),w=watched.hits.map(normalizeAnime);return <><header className="page-header"><h1>الاحصائيات العالمية</h1><p>أفضل الأعمال عالمياً والأكثر مشاهدة.</p></header><section className="home-section"><div className="section-heading"><h2>أفضل تقييم MyAnimeList</h2></div><div className="catalog-grid" style={{padding:0}}>{m.map((x,i)=><AnimeCard key={`${x.id}-${i}`} anime={x}/>)}</div></section><section className="home-section"><div className="section-heading"><h2>الأنميشن الأكثر مشاهدة</h2></div><div className="horizontal-list">{w.map((x,i)=><AnimeCard key={`${x.id}-${i}`} anime={x}/>)}</div></section></>}
+import RankingsClient from '@/components/RankingsClient';
+import { safeSearch } from '@/lib/algolia';
+import { asArabic } from '@/lib/firestore';
+import { normalizeAnime } from '@/lib/normalize';
+
+export const revalidate = 90;
+
+export default async function RankingsPage() {
+  const result = await safeSearch('best_mal_ranked', '', { hitsPerPage: 150 });
+  const items = result.hits.map((raw: any) => ({
+    ...normalizeAnime(raw),
+    state: asArabic(raw?.details?.state || raw?.state || raw?.status, ''),
+  }));
+  return <RankingsClient items={items} />;
+}
