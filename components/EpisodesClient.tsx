@@ -18,11 +18,15 @@ function epId(ep: any, index: number) {
   return String(ep?.id || ep?.doc_id || ep?.order || index + 1);
 }
 
+function epNumber(ep: any) {
+  return Number(ep?.order ?? ep?.id ?? ep?.doc_id ?? 0) || 0;
+}
+
 export default function EpisodesClient({ anime, episodes }: { anime: Anime; episodes: any[] }) {
   const [selected, setSelected] = useState<any | null>(null);
   const [watched, setWatched] = useState<Set<string>>(new Set());
   const canonicalId = decoded(anime.id);
-  const sorted = useMemo(() => [...episodes].sort((a, b) => Number(b.order ?? b.id ?? 0) - Number(a.order ?? a.id ?? 0)), [episodes]);
+  const sorted = useMemo(() => [...episodes].sort((a, b) => epNumber(b) - epNumber(a)), [episodes]);
 
   useEffect(() => {
     try {
@@ -41,8 +45,8 @@ export default function EpisodesClient({ anime, episodes }: { anime: Anime; epis
     <div className="episode-app-list">
       {sorted.map((ep: any, index: number) => {
         const id = epId(ep, index);
-        const order = ep.order || Number(id) || sorted.length - index;
-        const title = ep.title_translated || ep.title || ep.name || '';
+        const order = epNumber(ep) || sorted.length - index;
+        const title = ep.title_translated || ep.title || '';
         const image = ep.thumb_uri || ep.cover || anime.cover || anime.poster;
         const seen = watched.has(id);
         return <button className="episode-app-card" key={`${id}-${index}`} onClick={() => setSelected({ ...ep, _id: id, _order: order, _title: title, _image: image })}>
@@ -65,7 +69,7 @@ export default function EpisodesClient({ anime, episodes }: { anime: Anime; epis
         </div>
         <div className="episode-rating-block">
           <h3>ما رأيك في الحلقة؟</h3>
-          <div className="rating-stars">{['سيئة','متوسطة','جيدة','رائعة','أسطورية'].map((label, i) => <button key={label}><b>☆</b><span>{label}</span></button>)}</div>
+          <div className="rating-stars">{['سيئة','متوسطة','جيدة','رائعة','أسطورية'].map(label => <button key={label}><b>☆</b><span>{label}</span></button>)}</div>
         </div>
         <Link className="episode-watch-cta" href={`/watch/${encodeURIComponent(canonicalId)}/${encodeURIComponent(String(selected._id))}`}>المشاهدة والتحميل</Link>
       </section>
