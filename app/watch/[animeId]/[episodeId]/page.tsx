@@ -9,8 +9,9 @@ export default async function WatchPage({ params }: { params: Promise<{ animeId:
   const { animeId, episodeId } = await params;
   const [animeRaw, episodes, serversRaw] = await Promise.all([getAnime(animeId).catch(() => null), getEpisodes(animeId).catch(() => []), getServers(animeId, episodeId).catch(() => [])]);
   const anime = animeRaw ? normalizeAnime(animeRaw) : { name: 'Anime Witcher' } as any;
+  const canonicalAnimeId = String(animeRaw?.id || anime.id || animeId);
   const ep = episodes.find((x: any) => String(x.id || x.doc_id || x.order) === episodeId);
   const epName = asArabic(ep?.name, `الحلقة ${ep?.order || episodeId}`);
   const servers = groupServers(serversRaw).map(({ raw, sourceUrl, type, ...safe }) => safe);
-  return <div className="watch-page"><div className="watch-title"><h1>{anime.name}</h1><span>{epName}</span></div><PlayerClient animeId={animeId} episodeId={episodeId} animeName={anime.name} episodeName={epName} poster={anime.poster} initialServers={servers} />{!servers.length && <div className="status-message">لم يتم العثور على سيرفرات لهذه الحلقة.</div>}</div>;
+  return <div className="watch-page"><div className="watch-title"><h1>{anime.name}</h1><span>{epName}</span></div><PlayerClient animeId={canonicalAnimeId} episodeId={episodeId} animeName={anime.name} episodeName={epName} poster={anime.poster} initialServers={servers} />{!servers.length && <div className="status-message">لم يتم العثور على سيرفرات لهذه الحلقة.</div>}</div>;
 }
