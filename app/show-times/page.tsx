@@ -1,3 +1,35 @@
-import { safeSearch } from '@/lib/algolia'; import { asArabic } from '@/lib/firestore';
-const days=['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'];
-export const revalidate=300; export default async function ShowTimesPage(){const all=await Promise.all(days.map(async day=>{let r=await safeSearch('series','',{hitsPerPage:12,filters:`show_time:\"${day}\"`}); return {day,items:r.hits}})); return <><header className="page-header"><h1>جدول الحلقات</h1><p>مواعيد عرض الحلقات طوال الأسبوع.</p></header><div className="show-days">{all.map(({day,items})=><section className="day-card" key={day}><h3>{day}</h3>{items.length?items.slice(0,7).map((x:any,i:number)=><p key={x.objectID||i}>{asArabic(x.name,'عمل')} {x.show_time&&typeof x.show_time==='object'?`— ${asArabic(x.show_time)}`:''}</p>):<p>لا توجد أعمال مسجلة</p>}</section>)}</div></>}
+import AnimeCard from '@/components/AnimeCard';
+import { safeSearch } from '@/lib/algolia';
+import { asArabic } from '@/lib/firestore';
+import { normalizeAnime } from '@/lib/normalize';
+
+const days = ['السبت','الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة'];
+export const revalidate = 180;
+
+function dayOf(raw: any) {
+  return asArabic(raw?.show_time || raw?.details?.show_time, '').replace(/\s+/g, ' ').trim();
+}
+
+async function getDay(day: string) {
+  let result = await safeSearch('series', '', { hitsPerPage: 45, filters: `show_time:\"${day}\"` });
+  let hits = result.hits;
+  if (!hits.length) {
+    result = await safeSearch('series', day, { hitsPerPage: 100 });
+    hits = result.hits.filter((x: any) => dayOf(x) === day);
+  }
+  if (!hits.length) {
+    result = await safeSearch('series', '', { hitsPerPage: 250 });
+    hits = result.hits.filter((x: any) => dayOf(x) === day);
+  }
+  return hits.map(normalizeAnime);
+}
+
+export default async function ShowTimesPage() {
+  const all = await Promise.all(days.map(async day => ({ day, items: await getDay(day) })));
+  return <section className="native-schedule-page">
+    {all.map(({ day, items }) => <section className="schedule-day-section" key={day}>
+      <h2>{day}</h2>
+      {items.length ? <div className="native-grid schedule-native-grid">{items.map((anime, i) => <AnimeCard key={`${anime.id}-${i}`} anime={anime} />)}</div> : <div className="schedule-empty">لا توجد حلقات مسجلة</div>}
+    </section>)}
+  </section>;
+}
