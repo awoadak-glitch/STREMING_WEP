@@ -1,7 +1,40 @@
 import { HOME_INDEXES } from './config';
-import { getDocument, listDocuments } from './firestore';
+import { asArabic, getDocument, listDocuments } from './firestore';
 import { safeSearch } from './algolia';
 import { normalizeAnime, normalizeNews, normalizeRecent } from './normalize';
+
+function seasonText(raw: any) {
+  return asArabic(raw?.season, asArabic(raw?.details?.season, '')).replace(/\s+/g, ' ').trim();
+}
+
+function isSameSeason(raw: any, currentSeason: string) {
+  if (!currentSeason) return true;
+  return seasonText(raw) === currentSeason.replace(/\s+/g, ' ').trim();
+}
+
+async function getPopularSeason(currentSeason: string) {
+  const exact = await safeSearch(HOME_INDEXES.popularSeason, '', {
+    hitsPerPage: 12,
+    ...(currentSeason ? { filters: `season:\"${currentSeason.replace(/\"/g, '')}\"` } : {}),
+  });
+  if (exact.hits.length || !currentSeason) return exact;
+
+  // Some versions of the Android data have the season attribute searchable but not
+  // configured as a facetable Algolia attribute. Keep the exact APK-style filter first,
+  // then fall back to the same index/data source and preserve its popularity ordering.
+  const bySeasonQuery = await safeSearch(HOME_INDEXES.popularSeason, currentSeason, { hitsPerPage: 100 });
+  const queriedHits = bySeasonQuery.hits.filter(hit => isSameSeason(hit, currentSeason)).slice(0, 12);
+  if (queriedHits.length) return { ...bySeasonQuery, hits: queriedHits, nbHits: queriedHits.length };
+
+  const unfiltered = await safeSearch(HOME_INDEXES.popularSeason, '', { hitsPerPage: 250 });
+  const seasonalHits = unfiltered.hits.filter(hit => isSameSeason(hit, currentSeason)).slice(0, 12);
+  if (seasonalHits.length) return { ...unfiltered, hits: seasonalHits, nbHits: seasonalHits.length };
+
+  // If Firestore already moved current_season ahead of the populated Algolia records,
+  // show real popular records instead of an empty/mock section.
+  const fallbackHits = unfiltered.hits.slice(0, 12);
+  return { ...unfiltered, hits: fallbackHits, nbHits: fallbackHits.length };
+}
 
 export async function getHomeData() {
   let currentSeason = '';
@@ -12,7 +45,7 @@ export async function getHomeData() {
 
   const [recent, popular, bestMal, animations, latest, news] = await Promise.all([
     safeSearch(HOME_INDEXES.recent, '', { hitsPerPage: 14 }),
-    safeSearch(HOME_INDEXES.popularSeason, '', { hitsPerPage: 12, ...(currentSeason ? { filters: `season:\"${currentSeason.replace(/\"/g, '')}\"` } : {}) }),
+    getPopularSeason(currentSeason),
     safeSearch(HOME_INDEXES.bestMal, '', { hitsPerPage: 12 }),
     safeSearch(HOME_INDEXES.animations, '', { hitsPerPage: 12 }),
     safeSearch(HOME_INDEXES.latest, '', { hitsPerPage: 12 }),
