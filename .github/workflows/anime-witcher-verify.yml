@@ -1,0 +1,79 @@
+name: Anime Witcher Web Verify
+
+on:
+  push:
+    branches: [anime-witcher-web]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        env:
+          FIREBASE_PROJECT_ID: animewitcher-1c66d
+          FIREBASE_WEB_API_KEY: AIzaSyAcbWRwfFNnCpoydDXlEALWnM_TYVcJOMU
+        run: npm run build
+
+      - name: Start production server
+        env:
+          FIREBASE_PROJECT_ID: animewitcher-1c66d
+          FIREBASE_WEB_API_KEY: AIzaSyAcbWRwfFNnCpoydDXlEALWnM_TYVcJOMU
+        run: |
+          npm start > /tmp/anime-witcher-next.log 2>&1 &
+          echo $! > /tmp/anime-witcher-next.pid
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/anime-witcher-next.log
+          exit 1
+
+      - name: Verify real home data and drill into anime/episodes/servers
+        run: |
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:3000/api/home -o /tmp/home.json
+          node <<'NODE'
+          const fs = require('fs');
+          const { execFileSync } = require('child_process');
+          const home = JSON.parse(fs.readFileSync('/tmp/home.json','utf8'));
+          const keys = ['hero','recent','popular','bestMal','animations','latest','news'];
+          const counts = Object.fromEntries(keys.map(k => [k, Array.isArray(home[k]) ? home[k].length : -1]));
+          console.log('HOME_COUNTS', JSON.stringify(counts));
+          for (const k of keys) {
+            if (!Array.isArray(home[k]) || home[k].length === 0) throw new Error(`Home section ${k} is empty`);
+          }
+          const anime = home.hero.find(x => x && (x.id || x.objectID)) || home.latest[0];
+          const animeId = String(anime.id || anime.objectID || '');
+          if (!animeId) throw new Error('No real anime id found');
+          const enc = encodeURIComponent(animeId);
+          const get = (path) => JSON.parse(execFileSync('curl',['-fsS',`http://127.0.0.1:3000${path}`],{encoding:'utf8'}));
+          const details = get(`/api/anime/${enc}`);
+          if (!details || details.error) throw new Error(`Anime details failed for ${animeId}`);
+          const episodesPayload = get(`/api/anime/${enc}/episodes`);
+          const episodes = Array.isArray(episodesPayload) ? episodesPayload : (episodesPayload.episodes || episodesPayload.items || []);
+          console.log('ANIME_ID', animeId, 'EPISODE_COUNT', episodes.length);
+          if (!episodes.length) throw new Error(`No episodes for ${animeId}`);
+          const episode = episodes[0];
+          const episodeId = String(episode.id || episode.doc_id || episode.order || '');
+          if (!episodeId) throw new Error('No real episode id found');
+          const serversPayload = get(`/api/anime/${enc}/episodes/${encodeURIComponent(episodeId)}/servers`);
+          const servers = Array.isArray(serversPayload) ? serversPayload : (serversPayload.servers || serversPayload.items || []);
+          console.log('EPISODE_ID', episodeId, 'SERVER_COUNT', servers.length);
+          if (!servers.length) throw new Error(`No servers for ${animeId}/${episodeId}`);
+          NODE
+
+      - name: Show server log on failure
+        if: failure()
+        run: cat /tmp/anime-witcher-next.log || true
