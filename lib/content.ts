@@ -12,6 +12,23 @@ function isSameSeason(raw: any, currentSeason: string) {
   return seasonText(raw) === currentSeason.replace(/\s+/g, ' ').trim();
 }
 
+function decodedId(value: string) {
+  let out = String(value || '');
+  for (let i = 0; i < 2; i++) {
+    if (!/%[0-9A-Fa-f]{2}/.test(out)) break;
+    try {
+      const next = decodeURIComponent(out);
+      if (next === out) break;
+      out = next;
+    } catch { break; }
+  }
+  return out;
+}
+
+function pathSegment(value: string) {
+  return encodeURIComponent(decodedId(value));
+}
+
 async function getPopularSeason(currentSeason: string) {
   const exact = await safeSearch(HOME_INDEXES.popularSeason, '', {
     hitsPerPage: 12,
@@ -19,9 +36,6 @@ async function getPopularSeason(currentSeason: string) {
   });
   if (exact.hits.length || !currentSeason) return exact;
 
-  // Some versions of the Android data have the season attribute searchable but not
-  // configured as a facetable Algolia attribute. Keep the exact APK-style filter first,
-  // then fall back to the same index/data source and preserve its popularity ordering.
   const bySeasonQuery = await safeSearch(HOME_INDEXES.popularSeason, currentSeason, { hitsPerPage: 100 });
   const queriedHits = bySeasonQuery.hits.filter(hit => isSameSeason(hit, currentSeason)).slice(0, 12);
   if (queriedHits.length) return { ...bySeasonQuery, hits: queriedHits, nbHits: queriedHits.length };
@@ -30,8 +44,6 @@ async function getPopularSeason(currentSeason: string) {
   const seasonalHits = unfiltered.hits.filter(hit => isSameSeason(hit, currentSeason)).slice(0, 12);
   if (seasonalHits.length) return { ...unfiltered, hits: seasonalHits, nbHits: seasonalHits.length };
 
-  // If Firestore already moved current_season ahead of the populated Algolia records,
-  // show real popular records instead of an empty/mock section.
   const fallbackHits = unfiltered.hits.slice(0, 12);
   return { ...unfiltered, hits: fallbackHits, nbHits: fallbackHits.length };
 }
@@ -68,11 +80,12 @@ export async function getHomeData() {
 }
 
 export async function getAnime(id: string) {
-  const base = await getDocument(`anime_list/${encodeURIComponent(id)}`);
+  const safeId = pathSegment(id);
+  const base = await getDocument(`anime_list/${safeId}`);
   if (!base) return null;
-  const info = await getDocument(`anime_list/${encodeURIComponent(id)}/details/anime_info`).catch(() => null);
-  const trailer = await getDocument(`anime_list/${encodeURIComponent(id)}/details/anime_trailer`).catch(() => null);
-  return { ...base, ...(info || {}), trailer: trailer || null, id };
+  const info = await getDocument(`anime_list/${safeId}/details/anime_info`).catch(() => null);
+  const trailer = await getDocument(`anime_list/${safeId}/details/anime_trailer`).catch(() => null);
+  return { ...base, ...(info || {}), trailer: trailer || null, id: decodedId(id) };
 }
 
 function summaryEpisodes(summary: any) {
@@ -83,15 +96,16 @@ function summaryEpisodes(summary: any) {
 }
 
 export async function getEpisodes(animeId: string) {
-  const summary = await getDocument(`anime_list/${encodeURIComponent(animeId)}/episodes_summery/summery`).catch(() => null);
+  const safeId = pathSegment(animeId);
+  const summary = await getDocument(`anime_list/${safeId}/episodes_summery/summery`).catch(() => null);
   const items = summaryEpisodes(summary);
   if (items.length) return items.sort((a: any, b: any) => Number(a.order ?? a.id) - Number(b.order ?? b.id));
-  const page = await listDocuments(`anime_list/${encodeURIComponent(animeId)}/episodes`, { pageSize: 100, orderBy: 'order' }).catch(() => ({ items: [] }));
+  const page = await listDocuments(`anime_list/${safeId}/episodes`, { pageSize: 100, orderBy: 'order' }).catch(() => ({ items: [] }));
   return page.items;
 }
 
 export async function getServers(animeId: string, episodeId: string) {
-  const path = `anime_list/${encodeURIComponent(animeId)}/episodes/${encodeURIComponent(episodeId)}`;
+  const path = `anime_list/${pathSegment(animeId)}/episodes/${pathSegment(episodeId)}`;
   const collection = await listDocuments(`${path}/servers`, { pageSize: 100 }).catch(() => ({ items: [] }));
   if (collection.items.length) return collection.items;
   const summary = await getDocument(`${path}/servers2`).catch(() => null);
@@ -112,7 +126,7 @@ export async function getNews() {
 }
 
 export async function getAnimeExtras(id: string, raw?: any) {
-  const safeId = encodeURIComponent(id);
+  const safeId = pathSegment(id);
   const [reviewsPage, charactersPage] = await Promise.all([
     listDocuments(`anime_list/${safeId}/reviews`, { pageSize: 8 }).catch(() => ({ items: [] })),
     listDocuments(`anime_list/${safeId}/characters`, { pageSize: 16 }).catch(() => ({ items: [] })),
@@ -122,7 +136,7 @@ export async function getAnimeExtras(id: string, raw?: any) {
     ? raw.related_anime_ids.map((x: any) => String(x?.id || x)).filter(Boolean).slice(0, 12)
     : [];
   const relatedRaw = await Promise.all(relatedIds.map((relatedId: string) =>
-    getDocument(`anime_list/${encodeURIComponent(relatedId)}`).catch(() => null)
+    getDocument(`anime_list/${pathSegment(relatedId)}`).catch(() => null)
   ));
 
   return {
