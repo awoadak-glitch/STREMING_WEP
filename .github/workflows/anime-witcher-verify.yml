@@ -40,7 +40,7 @@ jobs:
           cat /tmp/anime-witcher-next.log
           exit 1
 
-      - name: Verify real home, routes, episodes and playable server
+      - name: Verify real home, native lists, routes and servers
         run: |
           set -euo pipefail
           node <<'NODE'
@@ -67,7 +67,13 @@ jobs:
             for (const k of keys) {
               if (!Array.isArray(home[k]) || home[k].length === 0) throw new Error(`Home section ${k} is empty`);
             }
+            if (!home.recent.every(x => x.poster)) throw new Error('Newest episodes must carry anime posters');
+            console.log('RECENT_POSTERS', home.recent.length);
 
+            await checkPage('/catalog/anime');
+            await checkPage('/rankings');
+            await checkPage('/show-times');
+            await checkPage(`/category/${encodeURIComponent('اكشن')}`);
             await checkPage('/search?q=Naruto');
             const search = await getJson('/api/search?q=Naruto&index=series');
             console.log('SEARCH_ITEMS', Array.isArray(search.items) ? search.items.length : 0);
@@ -105,6 +111,21 @@ jobs:
             const details = await getJson(`/api${animePath}`);
             if (!details || details.error) throw new Error('Real anime details API failed');
 
+            const targetNames = ['MF2','ST','KF','PD'];
+            const directReport = [];
+            for (const name of targetNames) {
+              const index = chain.servers.findIndex(s => String(s.name || '').toUpperCase() === name && /1080/.test(String(s.quality || '')));
+              if (index < 0) continue;
+              const r = await fetch(`${base}/api/anime/${encodeURIComponent(chain.animeId)}/episodes/${encodeURIComponent(chain.episodeId)}/servers?resolve=${index}`);
+              const text = await r.text();
+              if (!r.ok) throw new Error(`${name} direct resolution failed ${r.status}: ${text.slice(0,180)}`);
+              const resolved = JSON.parse(text);
+              if (!resolved?.url) throw new Error(`${name} resolved without URL`);
+              if (/streamtape\.(?:com|to)\/v\/|krakenfiles\.com\/view\/|pixeldrain\.com\/u\//i.test(resolved.url)) throw new Error(`${name} still resolved to a provider webpage: ${resolved.url}`);
+              directReport.push({name,quality:resolved.quality,host:new URL(resolved.url).host});
+            }
+            console.log('DIRECT_SERVER_REPORT', JSON.stringify(directReport));
+
             let playable = null;
             const maxServers = Math.min(chain.servers.length, 15);
             for (let i = 0; i < maxServers; i++) {
@@ -116,19 +137,13 @@ jobs:
                 const controller = new AbortController();
                 const timer = setTimeout(() => controller.abort(), 12000);
                 try {
-                  const media = await fetch(resolved.url, {
-                    redirect: 'follow', signal: controller.signal,
-                    headers: { 'User-Agent': 'Mozilla/5.0', Range: 'bytes=0-2047' },
-                  });
+                  const media = await fetch(resolved.url, { redirect: 'follow', signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0', Range: 'bytes=0-2047' } });
                   const type = media.headers.get('content-type') || '';
                   const buf = Buffer.from(await media.arrayBuffer());
                   const text = buf.subarray(0, 2048).toString('utf8');
                   const hls = text.includes('#EXTM3U') || /mpegurl/i.test(type);
-                  const binaryMedia = media.ok && buf.length > 0 && (/video|octet-stream/i.test(type) || /\.mp4(?:\?|$)/i.test(resolved.url));
-                  if (hls || binaryMedia) {
-                    playable = { index: i, name: resolved.name, quality: resolved.quality, status: media.status, type, hls };
-                    break;
-                  }
+                  const binaryMedia = media.ok && buf.length > 0 && (/video|octet-stream/i.test(type) || /\.mp4(?:\?|$)/i.test(resolved.url) || /\/api\/file\//i.test(resolved.url));
+                  if (hls || binaryMedia) { playable = { index:i,name:resolved.name,quality:resolved.quality,status:media.status,type,hls }; break; }
                 } finally { clearTimeout(timer); }
               } catch {}
             }
