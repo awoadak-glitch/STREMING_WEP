@@ -73,7 +73,7 @@ export default async function AnimeDetailsPage({ params }: { params: Promise<{ i
 
     <section className="detail-story-card">
       <p>{story}</p>
-      <div className="story-tags">{tags.map((tag: any) => <span key={String(tag)}>{String(tag)}</span>)}</div>
+      <div className="story-tags">{tags.map((tag: any) => <Link key={String(tag)} href={`/category/${encodeURIComponent(String(tag))}`}>{String(tag)}</Link>)}</div>
       <div className="story-info-grid">
         <div><span>المصدر :</span><b>{source}</b></div><div><span>مدة الحلقة :</span><b>{raw.duration ? `${raw.duration} دقيقة` : '—'}</b></div>
         <div><span>عرض من :</span><b>{details.start_date || anime.year || '—'}</b></div><div><span>إلى :</span><b>{details.end_date || '؟'}</b></div>
