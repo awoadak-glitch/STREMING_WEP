@@ -1,0 +1,1 @@
+import { LocalLibrary } from '@/components/ClientLibrary'; export default function FavoritesPage(){return <><header className="page-header"><h1>قائمتي</h1><p>الأنميات المفضلة المحفوظة على هذا الجهاز.</p></header><LocalLibrary mode="favorites"/></>}

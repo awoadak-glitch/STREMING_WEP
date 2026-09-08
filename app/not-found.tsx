@@ -1,0 +1,1 @@
+import Link from 'next/link'; export default function NotFound(){return <div className="empty-state"><div>!</div><h2>الصفحة غير موجودة</h2><p>ربما تم حذف العنصر أو تغير رابطه.</p><Link href="/" className="primary-button">الصفحة الرئيسية</Link></div>}

@@ -1,0 +1,1 @@
+import SettingsClient from '@/components/SettingsClient'; export default function SettingsPage(){return <><header className="page-header"><h1>الاعدادات</h1><p>إعدادات العرض والمشاهدة المكافئة لتفضيلات التطبيق.</p></header><SettingsClient/></>}

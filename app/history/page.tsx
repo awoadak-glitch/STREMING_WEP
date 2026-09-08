@@ -1,0 +1,1 @@
+import { LocalLibrary } from '@/components/ClientLibrary'; export default function HistoryPage(){return <><header className="page-header"><h1>اخر المشاهدات</h1><p>سجل المشاهدة على هذا الجهاز.</p></header><LocalLibrary mode="history"/></>}
