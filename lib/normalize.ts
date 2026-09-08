@@ -22,9 +22,7 @@ function imageFrom(value: any): string {
 function newsDate(value: any): string {
   if (value == null || value === '') return '';
   let candidate: any = value;
-  if (typeof candidate === 'object') {
-    candidate = candidate.seconds ?? candidate._seconds ?? candidate.timestamp ?? candidate.value ?? '';
-  }
+  if (typeof candidate === 'object') candidate = candidate.seconds ?? candidate._seconds ?? candidate.timestamp ?? candidate.value ?? '';
   if (typeof candidate === 'number') {
     const ms = candidate > 0 && candidate < 1e12 ? candidate * 1000 : candidate;
     const d = new Date(ms);
@@ -33,9 +31,7 @@ function newsDate(value: any): string {
   const text = String(candidate).trim();
   if (!text) return '';
   if (/^\d+(?:\.\d+)?$/.test(text)) {
-    const num = Number(text);
-    const ms = num > 0 && num < 1e12 ? num * 1000 : num;
-    const d = new Date(ms);
+    const num = Number(text); const ms = num > 0 && num < 1e12 ? num * 1000 : num; const d = new Date(ms);
     return Number.isNaN(d.getTime()) ? '' : d.toISOString();
   }
   const d = new Date(text);
@@ -67,12 +63,13 @@ export function normalizeAnime(raw: any): AnimeCardData {
 }
 
 export function normalizeRecent(raw: any) {
+  const poster = imageFrom(raw?.poster_uri) || imageFrom(raw?.poster) || imageFrom(raw?.aniList_poster) || imageFrom(raw?.details?.poster);
   return {
-    ...normalizeAnime({ ...raw, id: raw?.anime_id || raw?.objectID, poster_uri: raw?.poster_uri || raw?.thumb_uri }),
+    ...normalizeAnime({ ...raw, id: raw?.anime_id || raw?.objectID, poster_uri: poster }),
     animeId: String(raw?.anime_id || animeId(raw)),
     episodeId: String(raw?.episode_id || raw?.doc_id || ''),
     episodeName: asArabic(raw?.episode_name || raw?.name || raw?.title, 'حلقة جديدة'),
-    thumb: imageFrom(raw?.thumb_uri) || imageFrom(raw?.poster_uri),
+    thumb: imageFrom(raw?.thumb_uri),
     date: raw?.date || '',
   };
 }
