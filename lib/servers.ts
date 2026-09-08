@@ -37,20 +37,37 @@ function between(text: string, start: string, end: string) {
   const b = end ? text.indexOf(end, from) : text.length;
   return text.slice(from, b < 0 ? text.length : b).trim();
 }
+function cleanFoundUrl(value: string) {
+  let out = String(value || '').replace(/\\u0026/g, '&').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+  if (out.startsWith('//')) out = `https:${out}`;
+  return out.replace(/["'<>\\\s]+$/g, '');
+}
 
 export function resolveFromHtml(server: ResolvedServer, html: string) {
   const raw = server.raw || {};
+  const type = (server.type || server.name).toUpperCase();
+  const normalized = html.replace(/\\u0026/g, '&').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+
+  if (type === 'ST') {
+    const direct = normalized.match(/(?:https?:)?\/\/(?:www\.)?streamtape\.(?:com|to)\/get_video\?[^"'<>\s]+/i)?.[0];
+    if (direct) return cleanFoundUrl(direct);
+  }
+
   const w1 = str(raw.word1), w2 = str(raw.word2), w3 = str(raw.word3), w4 = str(raw.word4);
-  let token = between(html, w1, w2);
+  let token = between(normalized, w1, w2);
   for (const marker of [w1, w2, w3, w4].filter(Boolean)) token = token.split(marker).join('');
   const eq = token.lastIndexOf('=');
-  if (eq >= 0) token = token.slice(eq + 1);
-  token = token.replace(/^['\"\s]+|['\"\s;<>]+$/g, '').trim();
-  const type = (server.type || server.name).toUpperCase();
-  if (type === 'ST' && token && !token.includes('+')) return `https://streamtape.com/get_video?id=${encodeURIComponent(token)}&dl=1`;
+  if (eq >= 0 && !token.includes('http')) token = token.slice(eq + 1);
+  token = token.replace(/^['"\s]+|['"\s;<>]+$/g, '').trim();
+
+  if (type === 'ST' && token) {
+    if (/^https?:\/\//i.test(token) || token.startsWith('//')) return cleanFoundUrl(token);
+    if (!token.includes('+')) return `https://streamtape.com/get_video?id=${encodeURIComponent(token)}&dl=1`;
+  }
   if (type === 'VT' && token) return token.startsWith('http') ? token : `https://vidtube.one${token.startsWith('/') ? '' : '/'}${token}`;
-  const https = html.match(/https:\/\/[^\"'<>\\\s]+/g)?.map(x => x.replace(/&amp;/g, '&')) || [];
-  return https.find(x => /\.(m3u8|mp4)(\?|$)/i.test(x)) || https[0] || '';
+
+  const urls = normalized.match(/https:\/\/[^"'<>\s]+/g)?.map(cleanFoundUrl) || [];
+  return urls.find(x => /\.(m3u8|mp4|webm)(?:\?|#|$)/i.test(x)) || urls.find(x => /\/api\/file\//i.test(x)) || urls[0] || '';
 }
 
 export function isAllowedFetchUrl(input: string) {
