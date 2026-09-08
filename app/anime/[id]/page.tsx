@@ -22,6 +22,7 @@ export default async function AnimeDetailsPage({ params }: { params: Promise<{ i
   if (!raw) notFound();
   const extras = await getAnimeExtras(id, raw).catch(() => ({ reviews: [], characters: [], related: [] }));
   const anime = normalizeAnime(raw);
+  const canonicalId = animeId(raw) || id;
   const details = raw.details || {};
   const story = asArabic(raw.story || details.story || raw.description, 'لا توجد قصة متاحة لهذا العمل بعد.');
   const english = raw.english_name || details.english_name || details.name_en || '';
@@ -53,8 +54,8 @@ export default async function AnimeDetailsPage({ params }: { params: Promise<{ i
     </div>}
 
     <div className="detail-actions">
-      <Link className="primary-button" href={`/anime/${encodeURIComponent(id)}/episodes`}>▶ الحلقات والمشاهدة</Link>
-      <FavoriteButton anime={{ id: animeId(raw) || id, name: anime.name, poster, type: anime.type }} />
+      <Link className="primary-button" href={`/anime/${encodeURIComponent(canonicalId)}/episodes`}>▶ الحلقات والمشاهدة</Link>
+      <FavoriteButton anime={{ id: canonicalId, name: anime.name, poster, type: anime.type }} />
       {youtube && <a className="secondary-button" href={`https://www.youtube.com/watch?v=${encodeURIComponent(youtube)}`} target="_blank" rel="noreferrer">▷ العرض التشويقي</a>}
     </div>
 
