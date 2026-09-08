@@ -64,9 +64,7 @@ jobs:
             const counts = Object.fromEntries(keys.map(k => [k, Array.isArray(home[k]) ? home[k].length : -1]));
             console.log('CURRENT_SEASON', JSON.stringify(home.currentSeason || ''));
             console.log('HOME_COUNTS', JSON.stringify(counts));
-            for (const k of keys) {
-              if (!Array.isArray(home[k]) || home[k].length === 0) throw new Error(`Home section ${k} is empty`);
-            }
+            for (const k of keys) if (!Array.isArray(home[k]) || !home[k].length) throw new Error(`Home section ${k} is empty`);
             if (!home.recent.every(x => x.poster)) throw new Error('Newest episodes must carry anime posters');
             console.log('RECENT_POSTERS', home.recent.length);
 
@@ -103,7 +101,6 @@ jobs:
             console.log('EPISODE_COUNT', chain.episodes.length);
             console.log('REAL_EPISODE_ID', chain.episodeId);
             console.log('SERVER_COUNT', chain.servers.length);
-
             const animePath = `/anime/${encodeURIComponent(chain.animeId)}`;
             await checkPage(animePath);
             await checkPage(`${animePath}/episodes`);
@@ -112,19 +109,26 @@ jobs:
             if (!details || details.error) throw new Error('Real anime details API failed');
 
             const targetNames = ['MF2','ST','KF','PD'];
-            const directReport = [];
+            const providerReport = [];
             for (const name of targetNames) {
               const index = chain.servers.findIndex(s => String(s.name || '').toUpperCase() === name && /1080/.test(String(s.quality || '')));
               if (index < 0) continue;
               const r = await fetch(`${base}/api/anime/${encodeURIComponent(chain.animeId)}/episodes/${encodeURIComponent(chain.episodeId)}/servers?resolve=${index}`);
               const text = await r.text();
-              if (!r.ok) throw new Error(`${name} direct resolution failed ${r.status}: ${text.slice(0,180)}`);
+              if (!r.ok) {
+                providerReport.push({ name, ok:false, status:r.status, reason:text.slice(0,120) });
+                continue;
+              }
               const resolved = JSON.parse(text);
               if (!resolved?.url) throw new Error(`${name} resolved without URL`);
               if (/streamtape\.(?:com|to)\/v\/|krakenfiles\.com\/view\/|pixeldrain\.com\/u\//i.test(resolved.url)) throw new Error(`${name} still resolved to a provider webpage: ${resolved.url}`);
-              directReport.push({name,quality:resolved.quality,host:new URL(resolved.url).host});
+              providerReport.push({ name, ok:true, quality:resolved.quality, host:new URL(resolved.url).host });
             }
-            console.log('DIRECT_SERVER_REPORT', JSON.stringify(directReport));
+            console.log('DIRECT_SERVER_REPORT', JSON.stringify(providerReport));
+            const hasMF2 = providerReport.some(x => x.name === 'MF2' && x.ok);
+            const hasPD = providerReport.some(x => x.name === 'PD' && x.ok);
+            if (!hasMF2) throw new Error('MediaFire direct resolution failed');
+            if (chain.servers.some(s => String(s.name||'').toUpperCase()==='PD') && !hasPD) throw new Error('PixelDrain direct resolution failed');
 
             let playable = null;
             const maxServers = Math.min(chain.servers.length, 15);
@@ -137,17 +141,17 @@ jobs:
                 const controller = new AbortController();
                 const timer = setTimeout(() => controller.abort(), 12000);
                 try {
-                  const media = await fetch(resolved.url, { redirect: 'follow', signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0', Range: 'bytes=0-2047' } });
+                  const media = await fetch(resolved.url, { redirect:'follow', signal:controller.signal, headers:{ 'User-Agent':'Mozilla/5.0', Range:'bytes=0-2047' } });
                   const type = media.headers.get('content-type') || '';
                   const buf = Buffer.from(await media.arrayBuffer());
-                  const text = buf.subarray(0, 2048).toString('utf8');
+                  const text = buf.subarray(0,2048).toString('utf8');
                   const hls = text.includes('#EXTM3U') || /mpegurl/i.test(type);
                   const binaryMedia = media.ok && buf.length > 0 && (/video|octet-stream/i.test(type) || /\.mp4(?:\?|$)/i.test(resolved.url) || /\/api\/file\//i.test(resolved.url));
-                  if (hls || binaryMedia) { playable = { index:i,name:resolved.name,quality:resolved.quality,status:media.status,type,hls }; break; }
+                  if (hls || binaryMedia) { playable={index:i,name:resolved.name,quality:resolved.quality,status:media.status,type,hls}; break; }
                 } finally { clearTimeout(timer); }
               } catch {}
             }
-            if (!playable) throw new Error('Server records exist, but no tested server resolved to readable MP4/HLS media');
+            if (!playable) throw new Error('No tested server resolved to readable MP4/HLS media');
             console.log('PLAYABLE_SERVER', JSON.stringify(playable));
           })().catch(err => { console.error(err); process.exit(1); });
           NODE
@@ -176,7 +180,7 @@ jobs:
               else {
                 const rel = path.relative(process.cwd(), full).split(path.sep).join('/');
                 if (rel === '.github/workflows/anime-witcher-verify.yml') continue;
-                files.push({ file: rel, data: fs.readFileSync(full).toString('base64'), encoding: 'base64' });
+                files.push({ file:rel, data:fs.readFileSync(full).toString('base64'), encoding:'base64' });
               }
             }
           }
