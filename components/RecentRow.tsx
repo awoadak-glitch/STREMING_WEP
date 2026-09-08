@@ -27,7 +27,7 @@ export default function RecentRow({ items }: { items: any[] }) {
   if (!items.length) return null;
   return <section className="home-section recent-app-section">
     <div className="recent-app-list">{items.slice(0, 10).map((x, i) => <Link key={`${x.animeId}-${x.episodeId}-${i}`} className="recent-app-card" href={x.episodeId ? `/watch/${encodeURIComponent(x.animeId)}/${encodeURIComponent(x.episodeId)}` : `/anime/${encodeURIComponent(x.animeId)}`}>
-      <div className="recent-app-poster">{x.thumb || x.poster ? <img src={x.thumb || x.poster} alt={x.name} loading={i < 3 ? 'eager' : 'lazy'} /> : <div className="poster-placeholder">AW</div>}<span className="episode-yellow-badge">{x.episodeName || 'حلقة جديدة'}</span></div>
+      <div className="recent-app-poster">{x.poster ? <img src={x.poster} alt={x.name} loading={i < 3 ? 'eager' : 'lazy'} /> : <div className="poster-placeholder">AW</div>}<span className="episode-yellow-badge">{x.episodeName || 'حلقة جديدة'}</span></div>
       <strong>{x.name}</strong><small>{relativeDate(x.date)}</small>
     </Link>)}</div>
   </section>;
