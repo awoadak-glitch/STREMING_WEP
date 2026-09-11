@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import FusionBottomNav from '@/components/FusionBottomNav';
 
 type IconName = 'home'|'list'|'animation'|'calendar'|'chart'|'upcoming'|'grid'|'heart'|'history'|'download'|'person'|'clock'|'news'|'settings'|'search'|'filter'|'back';
 
@@ -51,8 +52,17 @@ const items: Array<[IconName,string,string,number]> = [
 function categoryTitle(pathname: string) {
   try { return decodeURIComponent(pathname.split('/').filter(Boolean).pop() || 'التصنيف'); } catch { return 'التصنيف'; }
 }
+function dramaKind(pathname: string) {
+  if (pathname.startsWith('/drama/movies')) return 'movies';
+  if (pathname.startsWith('/drama/channels')) return 'channels';
+  return 'series';
+}
 function pageTitle(pathname: string) {
   if (pathname === '/') return 'الصفحة الرئيسية';
+  if (pathname.startsWith('/drama/search')) return 'البحث';
+  if (pathname.startsWith('/drama/series')) return 'المسلسلات';
+  if (pathname.startsWith('/drama/movies')) return 'الأفلام';
+  if (pathname.startsWith('/drama/channels')) return 'القنوات';
   if (pathname.startsWith('/catalog/anime')) return 'قائمة الأنمي';
   if (pathname.startsWith('/catalog/animation')) return 'قائمة الأنميشن';
   if (pathname.startsWith('/catalog/upcoming')) return 'قادم قريبا';
@@ -73,9 +83,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const immersive = pathname.startsWith('/anime/') || pathname.startsWith('/watch/');
+  const dramaDetail = /^\/drama\/(?:series|movies|channels)\/[^/]+/.test(pathname);
+  const immersive = pathname.startsWith('/anime/') || pathname.startsWith('/watch/') || dramaDetail;
   const useBack = pathname.startsWith('/rankings') || pathname.startsWith('/category/');
   const showFilter = pathname.startsWith('/catalog/anime') || pathname.startsWith('/catalog/animation');
+  const isDrama = pathname.startsWith('/drama/');
+  const searchHref = isDrama ? `/drama/search?kind=${dramaKind(pathname)}` : '/search';
   let lastGroup = -1;
 
   return <div className={`app-shell ${immersive ? 'immersive-route' : ''}`}>
@@ -83,7 +96,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <button className="icon-button menu-button" aria-label={useBack ? 'رجوع' : 'القائمة'} onClick={() => useBack ? router.back() : setOpen(true)}>{useBack ? <Icon name="back" /> : <span className="hamburger-lines"><i/><i/><i/></span>}</button>
       <strong className="appbar-title">{pageTitle(pathname)}</strong>
       <div className="top-actions">
-        <Link className="icon-button search-icon" href="/search" aria-label="البحث"><Icon name="search" /></Link>
+        <Link className="icon-button search-icon" href={searchHref} aria-label="البحث"><Icon name="search" /></Link>
         {showFilter && <button className="icon-button catalog-filter-button" aria-label="تصفية" onClick={() => window.dispatchEvent(new CustomEvent('aw:catalog-filter'))}><Icon name="filter" /></button>}
       </div>
     </header>}
@@ -97,6 +110,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       })}</nav>
     </aside>
     {open && <button aria-label="إغلاق القائمة" className="scrim" onClick={() => setOpen(false)} />}
-    <main className="page-content">{children}</main>
+    <main className="page-content" style={!immersive ? { paddingBottom: 105 } : undefined}>{children}</main>
+    {!immersive && <FusionBottomNav />}
   </div>;
 }
